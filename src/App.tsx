@@ -1,84 +1,79 @@
+import { useEffect, useState } from 'react'
 import './App.css'
+import { Button } from '@components/ui/button'
+import { Input } from '@components/ui/input'
 import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger
-} from '@components/ui/accordion'
-import { 
-  Card, 
-  CardContent, 
-  CardDescription, 
-  CardHeader, 
-  CardTitle 
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
 } from '@components/ui/card'
+import {
+  FieldGroup,
+  FieldLabel,
+  Field
+} from '@components/ui/field'
 
-function App() {
-  // const [count, setCount] = useState(0)
+import {
+  Checkbox
+} from '@components/ui/checkbox'
 
-  return (
-    <>
-      <Card className="w-full max-w-sm center">
-        <CardHeader>
-          <CardTitle>
-            Subscription & Billing
-          </CardTitle>
-          <CardDescription>
-            Common questions about your account, plans, payments and cancellations
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Accordion type="multiple" className="max-w-lg">
-            {items.map((item) => (
-              <AccordionItem key={item.value} value={item.value}>
-                <AccordionTrigger>{item.trigger}</AccordionTrigger>
-                <AccordionContent>{item.content}</AccordionContent>
-              </AccordionItem>
-            ))}
-            <AccordionItem value='item-1'>
-              <AccordionTrigger>It is accessible?</AccordionTrigger>
-              <AccordionContent>
-                Yes. It adheres to the WAI-ARIA design pattern
-              </AccordionContent>
-            </AccordionItem>
-            <AccordionItem value='item-2'>
-              <AccordionTrigger>It is accessible?</AccordionTrigger>
-              <AccordionContent>
-                Yes. It adheres to the WAI-ARIA design pattern
-              </AccordionContent>
-            </AccordionItem>
-            <AccordionItem value='item-3'>
-              <AccordionTrigger>It is accessible?</AccordionTrigger>
-              <AccordionContent>
-                Yes. It adheres to the WAI-ARIA design pattern
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
-        </CardContent>
-      </Card>
-    </>
-  )
+type Task = {
+  id: string
+  title: string
+  completed: boolean
+  createdAt: string
 }
 
-const items = [
-  {
-    value: "notifications",
-    trigger: "Notification Settings",
-    content:
-      "Manage how to receive notifications. You can enable email alerts for updates or push notifications for mobile devices.",
-  },
-  {
-    value: "privacy",
-    trigger: "Privacy & Security",
-    content:
-      "Control your privacy settings and security preferences. Enable two-factor authentication, manage connected devices, review active sessions, and configure data sharing preferences. You can also download your data or delete your account."
-  },
-  {
-    value: "billing",
-    trigger: "Billing & Subscription",
-    content:
-      "View your current plan, payment history, and upcoming invoices. Update your payment method, change your subscription tier, or cancel your subscription"
-  }
-]
+const STORAGE_KEY = 'task-queue-app.tasks'
+
+function formatDate(dateString: string) {
+  return new Intl.DateTimeFormat('default', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(dateString))
+}
+
+function App() {
+
+
+  return (
+    <div className="min-h-screen bg-background px-4 py-6 text-foreground sm:px-6 lg:px-8">
+      <div className="mx-auto grid w-full max-w-6xl gap-6 lg:grid-cols-[1.3fr_0.9fr]">
+        <Card>
+
+          <CardHeader>
+            <CardTitle>Tarea de Proyecto de Software</CardTitle>
+            <CardDescription>Dividir la tarea en partes más especificas</CardDescription>
+          </CardHeader>
+
+          <CardContent>
+            <FieldGroup>
+            </FieldGroup>
+              <Field orientation="horizontal">
+                <Checkbox />
+                <FieldLabel>
+                  Hacer la tarea de Cultura y Deporte
+                </FieldLabel>
+                
+              </Field>
+              <Field orientation="horizontal">
+                <Checkbox />
+                <FieldLabel>
+                  Hacer la tarea de Cultura y Deporte
+                </FieldLabel>
+              </Field>
+          </CardContent>
+          <CardFooter>Pie de Card</CardFooter>
+        </Card>
+      </div>
+    </div>
+  )
+}
 
 export default App
