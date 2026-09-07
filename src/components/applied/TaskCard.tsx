@@ -26,10 +26,13 @@ function TaskCard({ task, onToggleSubtask }: TaskCardProps) {
           task.subtasks.map((sub) => (
             <Field key={sub.id} orientation="horizontal">
               <Checkbox
+                id={sub.id}
                 checked={sub.completed}
                 onCheckedChange={() => onToggleSubtask(task.id, sub.id)}
               />
-              <FieldLabel className={sub.completed ? "text-muted-foreground line-through" : ""}>
+              <FieldLabel 
+                className={sub.completed ? "text-muted-foreground line-through" : ""}
+                htmlFor={sub.id}>
                 {sub.title}
               </FieldLabel>
             </Field>
