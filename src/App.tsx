@@ -1,76 +1,73 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import './App.css'
-import { Button } from '@components/ui/button'
-import { Input } from '@components/ui/input'
+import type {
+  Task
+} from '@/types/task'
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@components/ui/card'
-import {
-  FieldGroup,
-  FieldLabel,
-  Field
-} from '@components/ui/field'
-
-import {
-  Checkbox
-} from '@components/ui/checkbox'
-
-type Task = {
-  id: string
-  title: string
-  completed: boolean
-  createdAt: string
-}
-
-const STORAGE_KEY = 'task-queue-app.tasks'
-
-function formatDate(dateString: string) {
-  return new Intl.DateTimeFormat('default', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(dateString))
-}
+  Accordion,
+  AccordionItem
+} from '@components/ui/accordion'
+import TaskCard from './components/applied/TaskCard'
 
 function App() {
+  const [tasks, setTasks] = useState<Task[]>([
+    {
+      id: 'ha138',
+      title: 'Realizar planeación de proyecto de software',
+      completed: false,
+      createdAt: '2026-09-07 16:46:24',
+      subtasks: [
+        { id: 'sub-1', title: 'Definir alcance', completed: false },
+        { id: 'sub-2', title: 'Levantar requisitos', completed: true },
+      ],
+    },
+    {
+      id: 'ha1139',
+      title: 'Realizar busqueda binaria de proyecto de software',
+      completed: false,
+      createdAt: '2026-09-07 16:46:24',
+      subtasks: [
+        { id: 'sub-3', title: 'Escribir pruebas unitarias', completed: false },
+      ],
+    },
+  ])
 
+
+
+  function toggleSubtask(taskId: string, subtaskId: string) {
+    setTasks(prev =>
+      prev.map(t =>
+        t.id !== taskId
+          ? t
+          : (() => {
+            const newSubtasks = t.subtasks.map(s => 
+              s.id === subtaskId? {...s, completed: !s.completed}: s
+            );
+            return {
+              ...t,
+              subtasks: newSubtasks,
+              completed: newSubtasks.length > 0 && newSubtasks.every(s => s.completed),
+            }
+          })()
+          
+          
+      )
+    )
+  }
 
   return (
     <div className="min-h-screen bg-background px-4 py-6 text-foreground sm:px-6 lg:px-8">
-      <div className="mx-auto grid w-full max-w-6xl gap-6 lg:grid-cols-[1.3fr_0.9fr]">
-        <Card>
-
-          <CardHeader>
-            <CardTitle>Tarea de Proyecto de Software</CardTitle>
-            <CardDescription>Dividir la tarea en partes más especificas</CardDescription>
-          </CardHeader>
-
-          <CardContent>
-            <FieldGroup>
-            </FieldGroup>
-              <Field orientation="horizontal">
-                <Checkbox />
-                <FieldLabel>
-                  Hacer la tarea de Cultura y Deporte
-                </FieldLabel>
-                
-              </Field>
-              <Field orientation="horizontal">
-                <Checkbox />
-                <FieldLabel>
-                  Hacer la tarea de Cultura y Deporte
-                </FieldLabel>
-              </Field>
-          </CardContent>
-          <CardFooter>Pie de Card</CardFooter>
-        </Card>
+      <div className="mx-auto w-full max-w-2xl">
+        <Accordion type="single" collapsible className="flex flex-col gap-3">
+          {tasks.map(task => (
+            <AccordionItem key={task.id} value={task.id} className="border-none">
+              <TaskCard
+                task={task}
+                onToggleSubtask={toggleSubtask}
+              />
+            </AccordionItem>
+          ))}
+        </Accordion>
       </div>
     </div>
   )
