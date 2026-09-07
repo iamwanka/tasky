@@ -1,150 +1,160 @@
 # Task Queue App — Build Plan
 
-Current state: Vite + React 19 + Tailwind v4 + shadcn scaffolded. `accordion`, `card`,
-`checkbox`, `dialog`, `dropdown-menu`, `field` components are installed but mostly unused.
-`App.tsx` renders two hardcoded checkbox rows inside one `Card` — no state, no data model,
-no persistence yet.
+_Last updated: 2026-09-07_
+
+## Current state
+
+Vite + React 19 + Tailwind v4 + shadcn. Tasks render as an `Accordion` — each task is a
+card you tap to expand, revealing its subtasks. Checking every subtask automatically marks
+the task itself complete. No add/delete yet, no persistence yet — everything lives in
+in-memory `useState` seed data and resets on refresh.
+
+**Files:**
+- [src/types/task.tsx](src/types/task.tsx) — `Task` / `Subtask` types.
+- [src/App.tsx](src/App.tsx) — owns `tasks` state, `toggleSubtask`, seed data.
+- [src/components/applied/TaskCard.tsx](src/components/applied/TaskCard.tsx) — one
+  task's accordion item (trigger = title, content = subtask list).
 
 ## Roadmap
 
-### Phase 1 — Data model & state (do this before anything visual)
-Define the `Task` type properly, including subtasks:
-```ts
-type Subtask = { id: string; title: string; completed: boolean }
-type Task = { id: string; title: string; completed: boolean; createdAt: string; subtasks: Subtask[] }
-```
-Move tasks into `useState<Task[]>` in `App.tsx` (or a custom hook `useTasks()` later).
+### ~~Phase 1 — Data model & state~~ ✅ done
+`Task` / `Subtask` types defined, `tasks` lives in `useState<Task[]>` in `App.tsx`.
 
-**Learn:** `useState`, why React re-renders on state change, and the rule that state updates
-must be immutable (never `task.subtasks.push(...)`, always return a new array/object).
+### ~~Phase 2 — Render from state~~ ✅ done
+`tasks.map(task => <TaskCard key={task.id} task={task} />)`, split into its own component.
 
-### Phase 2 — Render from state, not hardcoded JSX
-`tasks.map(task => <TaskCard key={task.id} task={task} />)`.
+### ~~Phase 3 — Expand/collapse + auto-complete~~ ✅ done
+Built with `Accordion`/`AccordionItem`/`AccordionTrigger`/`AccordionContent` (see "What was
+built" below) — not the original two-checkbox sketch. Also went a step further than the
+original plan: there is **no independent task-level checkbox anymore**. A task's `completed`
+is now fully *derived* from its subtasks (see the auto-complete section below), not toggled
+by hand. That's a deliberate simplification, but it creates a known gap — see "Open gap" below.
 
-**Learn:** rendering lists, why `key` matters, and splitting a growing component into smaller
-ones (`TaskCard`, `SubtaskList`).
-
-### Phase 3 — Expand/collapse interaction (immediate next step)
-See "Expand-on-tap feature" below.
-
-### Phase 4 — CRUD
-- Add task (Input + Button, or a `Dialog` for a proper "New Task" form).
-- Toggle complete (already have `Checkbox`, just wire `onCheckedChange`).
-- Delete task/subtask (`Button` with a trash icon, maybe a `DropdownMenu` per card for
-  "Edit / Delete").
+### Phase 4 — CRUD (next up)
+- **Add task**: `Input` + `Button`, or a `Dialog` for a proper "New Task" form. New tasks
+  need a generated `id` (e.g. `crypto.randomUUID()`) and `createdAt`.
+- **Add subtask**: same idea, scoped to one task — probably an input inside
+  `AccordionContent`, below the existing subtask list.
+- **Delete task/subtask**: a `Button` with a trash icon, or a `DropdownMenu` per card for
+  "Edit / Delete".
 
 **Learn:** controlled inputs (`value` + `onChange`), passing callbacks down as props
-(`onToggle`, `onDelete`).
+(the same "lift state up, pass handlers down" pattern already used for `onToggleSubtask`),
+generating stable unique ids client-side.
+
+**Suggested first step:** start with "delete subtask" — it reuses the exact `prev.map(t =>
+t.id === taskId ? {...} : t)` skeleton `toggleSubtask` already uses, just with `.filter()`
+instead of `.map()` on the inner `subtasks` array. Good warm-up before tackling "add," which
+needs a form and id generation.
 
 ### Phase 5 — Persistence
-`STORAGE_KEY` is already declared — actually use it: `localStorage.getItem` on load, a
-`useEffect` to save on every change.
+Not started. `localStorage.getItem` on load (inside `useState`'s lazy initializer, or an
+effect), a `useEffect` that writes to `localStorage.setItem` whenever `tasks` changes.
 
-**Learn:** `useEffect` and dependency arrays.
+**Learn:** `useEffect` and dependency arrays; lazy `useState` initializers
+(`useState(() => ...)`) to avoid reading `localStorage` on every render.
 
 ### Phase 6 — Polish
 Empty states, `Badge` for subtask counts ("2/5 done"), maybe drag-reorder later, filters
 (all/active/done).
 
-Do these roughly in order — expand/collapse (phase 3) depends on phase 1/2.
+## Open gap to resolve (found after Phase 3)
 
-## Expand-on-tap feature — what to learn
+Since `toggleTask` was removed, **a task with zero subtasks can never be marked complete** —
+there is currently no UI path to set `completed` on a task that has no subtasks to derive it
+from. Decide before or during Phase 4:
+- Restore a manual task-level checkbox, used only when `subtasks.length === 0`, or
+- Require every task to have at least one subtask (simplest, but restricts what a "task" can be), or
+- Bring back `toggleTask` for the no-subtasks case specifically, leaving the derived logic
+  in `toggleSubtask` untouched for tasks that do have subtasks.
 
-The core idea isn't shadcn-specific, it's a React concept: **"is this card open?" is state,
-not something you toggle in the DOM directly.** You click → a state value changes → React
-re-renders → the JSX conditionally shows the subtasks. That's the whole trick, in every
-framework.
+## What was built: expand/collapse with `Accordion`
 
-Two ways to implement it:
-
-### Option A — use the `Accordion` component (already installed)
-Radix's Accordion primitive (wrapped by shadcn) already manages "which item is open" for
-you — no need for your own `useState` for the open/closed part. Map each task to an
-`AccordionItem`, put the checkbox+title in `AccordionTrigger` (the clickable part), and the
-subtasks in `AccordionContent`:
+Radix's Accordion primitive (wrapped by shadcn) manages "which item is open" internally —
+no manual `useState` needed for that part. Final shape, in `TaskCard.tsx`:
 
 ```tsx
-<Accordion type="single" collapsible>
-  {tasks.map(task => (
-    <AccordionItem key={task.id} value={task.id}>
-      <AccordionTrigger>
-        <span className="flex items-center gap-2">
-          <Checkbox checked={task.completed} onCheckedChange={() => toggleTask(task.id)} />
-          {task.title}
-        </span>
-      </AccordionTrigger>
-      <AccordionContent>
-        {task.subtasks.map(sub => (
-          <Field key={sub.id} orientation="horizontal">
-            <Checkbox checked={sub.completed} onCheckedChange={() => toggleSubtask(task.id, sub.id)} />
-            <FieldLabel>{sub.title}</FieldLabel>
-          </Field>
-        ))}
-      </AccordionContent>
-    </AccordionItem>
-  ))}
-</Accordion>
+<Card>
+  <AccordionTrigger>
+    {/* clicking anywhere here toggles this card's own AccordionItem open/closed */}
+    <span>{task.title}</span>
+  </AccordionTrigger>
+  <AccordionContent>
+    {task.subtasks.map(sub => (
+      <Field key={sub.id}>
+        <Checkbox id={sub.id} checked={sub.completed} onCheckedChange={...} />
+        <FieldLabel htmlFor={sub.id}>{sub.title}</FieldLabel>
+      </Field>
+    ))}
+  </AccordionContent>
+</Card>
 ```
 
-Put this whole `Accordion` inside the existing `Card`, replacing the hardcoded `Field`s.
-`type="single" collapsible` means one card open at a time (tap again to close); use
-`type="multiple"` if several can be open simultaneously.
+`App.tsx` wraps each `TaskCard` in `<AccordionItem value={task.id}>`, all inside one
+`<Accordion type="single" collapsible>` — `type="single"` means only one card is open at a
+time; switch to `type="multiple"` if several should be expandable simultaneously.
 
-### Option B — roll your own with `useState` (good exercise)
-Keep a `Set<string>` of expanded task ids in `App`, toggle membership on click, and
-conditionally render the subtask list with `{isExpanded && <SubtaskList .../>}`. This is
-what `Accordion` does internally, minus the animation — worth trying once you understand
-what the component gives you for free.
-
-**Suggested order:** wire it with `Accordion` first (fast, and it teaches the
-`value`/`onValueChange`/controlled-vs-uncontrolled pattern you'll reuse for `Dialog` and
-`DropdownMenu` later). Then, as a learning exercise once it works, rebuild the same
-behavior with plain `useState` — that's when "state drives the UI" really sticks.
+**Key lesson — label/checkbox association:** clicking the subtask *text* didn't toggle the
+checkbox at first, because `Checkbox` and `FieldLabel` were just two sibling elements with no
+relationship. The fix wasn't a second `onClick` handler (that duplicates the toggle logic in
+two places) — it's native HTML: give the `Checkbox` an `id`, give `FieldLabel` a matching
+`htmlFor`, and the browser forwards clicks on the label to the associated control
+automatically (this works because Radix's `Checkbox` renders as a real `<button>`, and
+buttons are "labelable" elements per the HTML spec, same as `<input>`). One handler
+(`onCheckedChange`), no duplication.
 
 ## Guide: auto-complete a task when all its subtasks are done
 
 **Goal:** when the last unchecked subtask under a task gets checked, the task's own
-`completed` flips to `true` automatically — no separate click on the task's checkbox
-needed. (Decide for yourself: should unchecking one subtask afterward un-complete the
-task again? Recommended: yes, otherwise the checkbox can lie.)
+`completed` flips to `true` automatically. Unchecking a subtask afterward un-completes the
+task again (recomputed every time, not a one-way flag).
 
-### Two ways to think about it, and why one is better
+**Why derive it instead of using a `useEffect`:** a `useEffect` watching `tasks` to
+re-flip `completed` after the fact would mean two renders per click (one for the subtask
+toggle, one for the effect's follow-up `setState`) and is the exact pattern React's docs
+warn about in *"You Might Not Need an Effect"* — using an Effect to sync two pieces of state
+that live in the same object. Instead, `completed` is computed in the same state update that
+changes `subtasks`, inside `toggleSubtask`:
 
-**Option A — synchronize with `useEffect`.** Watch `tasks` in an effect; when a task's
-subtasks are all completed, call `setTasks` again to flip `completed`.
-Downside: this is exactly the pattern React's docs warn about in *"You Might Not Need an
-Effect"* — you'd use an Effect to keep two pieces of state in sync that both live in the
-same object. Click a subtask → render → effect runs → second `setState` → second render.
-Two renders for one user action, plus a risk of loops if the dependency array is wrong.
+```ts
+function toggleSubtask(taskId: string, subtaskId: string) {
+  setTasks(prev =>
+    prev.map(t => {
+      if (t.id !== taskId) return t
+      const newSubtasks = t.subtasks.map(s =>
+        s.id === subtaskId ? { ...s, completed: !s.completed } : s
+      )
+      return {
+        ...t,
+        subtasks: newSubtasks,
+        completed: newSubtasks.length > 0 && newSubtasks.every(s => s.completed),
+      }
+    })
+  )
+}
+```
 
-**Option B (recommended) — derive `completed` in the same update that changes the
-subtasks.** `toggleSubtask` already builds a new `subtasks` array for the target task.
-Before returning the new task object, compute whether every subtask in *that new array*
-is completed, and set `completed` to that value in the same object. One state update, one
-render, no effect.
+The `newSubtasks.length > 0` guard matters: `[].every(...)` is `true` on an empty array
+(vacuous truth), so without it a task with zero subtasks would instantly show as complete —
+this is the same root cause as the "Open gap" above, just encountered from a different angle.
 
-### Steps (Option B)
+**Bugs hit while building this (for future reference — same mistakes cost real time):**
+- Confusing "all tasks" with "one task's subtasks" — `prev.map(...)` produces the whole
+  `Task[]`, `t.subtasks.map(...)` produces one task's `Subtask[]`. Don't reuse a variable
+  name like `newSubtasks` for the wrong one of these.
+- `.map().length == originalArray.length` is **always true** — `.map()` never changes
+  array length, so this can never actually detect "are all of them done." Use `.every()`.
+- Object spread is **three** dots (`...`), not two (`..`) — a two-dot typo produces a
+  `TS1003: Identifier expected` parse error, not a runtime bug.
+- An IIFE (`(() => { ... })`) does nothing unless *called*: `(() => { ... })()`, with the
+  trailing `()`. Without it, the expression's value is the function itself, not its return
+  value.
 
-1. Open `toggleSubtask` in `App.tsx`.
-2. Inside the branch where `t.id === taskId`, pull the mapped array into its own variable
-   first instead of inlining it twice, e.g. `const newSubtasks = t.subtasks.map(...)`.
-3. Compute `const allDone = newSubtasks.length > 0 && newSubtasks.every(s => s.completed)`.
-   - The `length > 0` guard matters: `[].every(...)` is `true` on an empty array (vacuous
-     truth), so without the guard a task with zero subtasks would "complete" itself
-     instantly.
-4. Return `{ ...t, subtasks: newSubtasks, completed: allDone }` instead of the current
-   `{ ...t, subtasks: newSubtasks }`.
-5. **Test it:** check every subtask under a task one at a time — the task's own checkbox
-   should flip to checked (and strike through) the moment the last one is checked.
-   Uncheck one — the task should un-check again, since `allDone` recomputes every time.
+## Resume here tomorrow
 
-### Edge cases to decide for yourself
-
-- **Task with no subtasks:** unaffected — `toggleTask` still drives it directly, since
-  `toggleSubtask` never touches a task with an empty `subtasks` array.
-- **Manually toggling the task's own checkbox when it *does* have subtasks:** today
-  `toggleTask` only flips `task.completed` and leaves the subtasks alone — the next time
-  any subtask is toggled, `allDone` recomputes and can silently override what you just set
-  by hand. Decide if that's fine, or whether checking the parent by hand should cascade
-  and check all its subtasks too (same "derive together" idea, applied inside `toggleTask`
-  instead, in the other direction).
+1. Decide the "open gap" above (task with no subtasks) before or while starting Phase 4 —
+   it'll shape how "add task" seeds a brand-new task's `completed` field.
+2. Start Phase 4 with **delete subtask** (see "Suggested first step" above) as a warm-up,
+   then **add subtask**, then **add task**, then **delete task**.
+3. Phase 5 (persistence) is the natural stopping point after Phase 4 — right now every
+   reload wipes progress back to the two seed tasks.
