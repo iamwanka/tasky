@@ -30,29 +30,47 @@ function App() {
         { id: 'sub-3', title: 'Escribir pruebas unitarias', completed: false },
       ],
     },
+    {
+      id: 'haq24893',
+      title: 'Realizar busqueda binaria de proyectos',
+      completed: false,
+      createdAt: '2026-09-07 14:34:23',
+      subtasks: []
+    }
   ])
 
 
 
   function toggleSubtask(taskId: string, subtaskId: string) {
     setTasks(prev =>
-      prev.map(t =>
-        t.id !== taskId
-          ? t
-          : (() => {
-            const newSubtasks = t.subtasks.map(s => 
-              s.id === subtaskId? {...s, completed: !s.completed}: s
-            );
-            return {
-              ...t,
-              subtasks: newSubtasks,
-              completed: newSubtasks.length > 0 && newSubtasks.every(s => s.completed),
-            }
-          })()
-          
-          
-      )
+      prev.map(t => {
+        if (t.id !== taskId) return t;
+
+        const newSubtasks = t.subtasks.map(s =>
+          s.id === subtaskId ? { ...s, completed: !s.completed } : s
+        );
+        
+        return {
+          ...t,
+          subtasks: newSubtasks,
+          completed: newSubtasks.length > 0 && newSubtasks.every(s => s.completed),
+        }
+
+
+      })
     )
+  }
+  function toggleTask(taskId: string) {
+    setTasks(prev =>
+      prev.map(task =>
+        task.id === taskId ?
+          { ...task, completed: !task.completed }
+          :
+          task
+      )
+
+    )
+
   }
 
   return (
@@ -64,6 +82,7 @@ function App() {
               <TaskCard
                 task={task}
                 onToggleSubtask={toggleSubtask}
+                onToggleTask={toggleTask}
               />
             </AccordionItem>
           ))}
