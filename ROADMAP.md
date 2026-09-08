@@ -1,19 +1,21 @@
 # Task Queue App — Build Plan
 
-_Last updated: 2026-09-07_
+_Last updated: 2026-09-08_
 
 ## Current state
 
-Vite + React 19 + Tailwind v4 + shadcn. Tasks render as an `Accordion` — each task is a
-card you tap to expand, revealing its subtasks. Checking every subtask automatically marks
-the task itself complete. No add/delete yet, no persistence yet — everything lives in
-in-memory `useState` seed data and resets on refresh.
+Vite + React 19 + Tailwind v4 + shadcn. Tasks render as an `Accordion`. A task **with**
+subtasks is a card you tap to expand, revealing its subtasks — checking every subtask
+automatically marks the task itself complete. A task with **no** subtasks renders as a
+plain checkbox row instead (nothing to expand), and is completed by hand. No add/delete
+yet, no persistence yet — everything lives in in-memory `useState` seed data and resets on
+refresh.
 
 **Files:**
 - [src/types/task.tsx](src/types/task.tsx) — `Task` / `Subtask` types.
-- [src/App.tsx](src/App.tsx) — owns `tasks` state, `toggleSubtask`, seed data.
+- [src/App.tsx](src/App.tsx) — owns `tasks` state, `toggleSubtask`, `toggleTask`, seed data.
 - [src/components/applied/TaskCard.tsx](src/components/applied/TaskCard.tsx) — one
-  task's accordion item (trigger = title, content = subtask list).
+  task's row: accordion item if it has subtasks, plain checkbox row if it doesn't.
 
 ## Roadmap
 
@@ -25,10 +27,10 @@ in-memory `useState` seed data and resets on refresh.
 
 ### ~~Phase 3 — Expand/collapse + auto-complete~~ ✅ done
 Built with `Accordion`/`AccordionItem`/`AccordionTrigger`/`AccordionContent` (see "What was
-built" below) — not the original two-checkbox sketch. Also went a step further than the
-original plan: there is **no independent task-level checkbox anymore**. A task's `completed`
-is now fully *derived* from its subtasks (see the auto-complete section below), not toggled
-by hand. That's a deliberate simplification, but it creates a known gap — see "Open gap" below.
+built" below) — not the original two-checkbox sketch. A task's `completed` is derived from
+its subtasks when it has any (see the auto-complete guide below); for a task with zero
+subtasks there's nothing to derive from, so it gets a plain manual checkbox instead — see
+"Resolved: task with no subtasks" below for how that split works.
 
 ### Phase 4 — CRUD (next up)
 - **Add task**: `Input` + `Button`, or a `Dialog` for a proper "New Task" form. New tasks
@@ -58,15 +60,26 @@ effect), a `useEffect` that writes to `localStorage.setItem` whenever `tasks` ch
 Empty states, `Badge` for subtask counts ("2/5 done"), maybe drag-reorder later, filters
 (all/active/done).
 
-## Open gap to resolve (found after Phase 3)
+## Resolved: task with no subtasks
 
-Since `toggleTask` was removed, **a task with zero subtasks can never be marked complete** —
-there is currently no UI path to set `completed` on a task that has no subtasks to derive it
-from. Decide before or during Phase 4:
-- Restore a manual task-level checkbox, used only when `subtasks.length === 0`, or
-- Require every task to have at least one subtask (simplest, but restricts what a "task" can be), or
-- Bring back `toggleTask` for the no-subtasks case specifically, leaving the derived logic
-  in `toggleSubtask` untouched for tasks that do have subtasks.
+Previously an open gap: with `toggleTask` removed, a task with zero subtasks had no way to
+ever become `completed`, since nothing derived it and nothing set it by hand.
+
+**Fix:** `toggleTask` is back in `App.tsx`, but it's only wired up for the no-subtasks case.
+`TaskCard` branches on `task.subtasks.length`:
+- `0` → a plain `Checkbox` + `FieldLabel` row (no accordion at all — there's nothing to
+  expand), driven by `onToggleTask`, which just flips `completed` directly.
+- `> 0` → the `AccordionTrigger`/`AccordionContent` structure from Phase 3, driven by
+  `onToggleSubtask`, which derives `completed` from the subtasks as before.
+
+Both callbacks are passed into every `TaskCard`, but each one is only ever invoked from the
+branch it belongs to — a task can't have both a manual checkbox and derived completion at
+once. Small cleanup made alongside this: the no-subtasks row's className had been copied
+wholesale from `AccordionTrigger`'s internal styles (including chevron-icon selectors for
+an icon that's never rendered there), and used `items-start` where the equivalent
+with-subtasks row uses `items-center` — both trimmed down to a plain
+`"flex items-center gap-2 py-2.5"` so the two row types stay visually consistent and the
+duplicate styling can't quietly drift out of sync with shadcn's own accordion styles later.
 
 ## What was built: expand/collapse with `Accordion`
 
@@ -135,8 +148,10 @@ function toggleSubtask(taskId: string, subtaskId: string) {
 ```
 
 The `newSubtasks.length > 0` guard matters: `[].every(...)` is `true` on an empty array
-(vacuous truth), so without it a task with zero subtasks would instantly show as complete —
-this is the same root cause as the "Open gap" above, just encountered from a different angle.
+(vacuous truth), so without it a task with zero subtasks would instantly show as complete.
+In practice this guard is now moot for that case specifically, since a zero-subtask task
+never reaches `toggleSubtask` at all — see "Resolved: task with no subtasks" above — but
+it's still correct defensive logic to keep.
 
 **Bugs hit while building this (for future reference — same mistakes cost real time):**
 - Confusing "all tasks" with "one task's subtasks" — `prev.map(...)` produces the whole
@@ -152,9 +167,11 @@ this is the same root cause as the "Open gap" above, just encountered from a dif
 
 ## Resume here tomorrow
 
-1. Decide the "open gap" above (task with no subtasks) before or while starting Phase 4 —
-   it'll shape how "add task" seeds a brand-new task's `completed` field.
-2. Start Phase 4 with **delete subtask** (see "Suggested first step" above) as a warm-up,
+1. Start Phase 4 with **delete subtask** (see "Suggested first step" above) as a warm-up,
    then **add subtask**, then **add task**, then **delete task**.
-3. Phase 5 (persistence) is the natural stopping point after Phase 4 — right now every
-   reload wipes progress back to the two seed tasks.
+   - For "add task," decide up front whether a brand-new task starts with `subtasks: []`
+     (renders as the plain-checkbox row) or requires at least one subtask before it can be
+     created (always renders as an accordion item) — either is fine, just pick one so the
+     `TaskCard` branch behaves predictably for freshly-created tasks.
+2. Phase 5 (persistence) is the natural stopping point after Phase 4 — right now every
+   reload wipes progress back to the three seed tasks.
