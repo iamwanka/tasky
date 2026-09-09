@@ -33,12 +33,50 @@ subtasks there's nothing to derive from, so it gets a plain manual checkbox inst
 "Resolved: task with no subtasks" below for how that split works.
 
 ### Phase 4 — CRUD (next up)
-- **Add task**: `Input` + `Button`, or a `Dialog` for a proper "New Task" form. New tasks
-  need a generated `id` (e.g. `crypto.randomUUID()`) and `createdAt`.
-- **Add subtask**: same idea, scoped to one task — probably an input inside
-  `AccordionContent`, below the existing subtask list.
-- **Delete task/subtask**: a `Button` with a trash icon, or a `DropdownMenu` per card for
-  "Edit / Delete".
+
+**Design principles:**
+1. Friction should match the cost of the action — add task/subtask is frequent and cheap
+   → zero friction, inline. Delete task is rarer and costlier → needs a safety net, but not
+   necessarily a blocking modal.
+2. Affordances should be visible but quiet, not hover-only — hover doesn't exist on touch.
+3. Consistent icon language — `lucide-react` is already a dependency; use it (`Plus`,
+   `Trash2`, `MoreVertical`) to match the chevrons `Accordion` already shows.
+4. Keyboard-first for quick-add — autofocus the input, Enter submits, Escape cancels,
+   refocus after submit for rapid successive entries.
+5. Never a blank screen — an empty task list needs a message + the same "add" affordance
+   as its call-to-action.
+
+**Add task:** inline "quick add" row pinned above the list (`Input` + `Plus`, placeholder
+"Add a task…"), not a `Dialog` — a modal adds a click-open/type/click-close cycle to the
+single most frequent action in the app. Save `Dialog` for if task creation ever needs more
+than a title (due date, priority). New tasks need a generated `id` (e.g.
+`crypto.randomUUID()`) and `createdAt`; decide whether a fresh task starts with
+`subtasks: []` (renders as the plain-checkbox row from the "Resolved" section above) or
+requires one subtask up front.
+
+**Add subtask:** same idea, scoped: a subtle "+ Add subtask" input as the last row inside
+`AccordionContent`, visually distinct from real subtasks (muted/dashed) so it isn't
+mistaken for one.
+
+**Delete subtask:** low cost, mentally reversible (just retype it). A quiet ghost
+trash-icon `Button` at the end of the row, always visible (`text-muted-foreground`, shifts
+to `text-destructive` on hover), deletes immediately — no confirmation needed.
+
+**Delete task:** higher cost, can take several subtasks with it. Two options:
+- **Toast + Undo (recommended):** delete immediately, show a dismissible toast "Task
+  deleted · Undo" for a few seconds — zero friction for the confident case, full
+  reversibility for the mistake (what Gmail/Todoist/Linear do). Needs
+  `npx shadcn add sonner`.
+- **AlertDialog confirm:** a blocking "Are you sure?" before deleting — simpler mentally,
+  but adds a click+modal to every delete. Needs `npx shadcn add alert-dialog` (not the
+  `Dialog` already installed — `AlertDialog` is the semantically-correct primitive for
+  destructive confirmations: traps focus, forces an explicit choice).
+
+Either way, put delete behind a small `⋮` `DropdownMenu` on the card rather than a bare
+icon on the card face — keeps the resting card calm and gives "Edit" a home later too.
+
+**Empty state:** when `tasks.length === 0`, swap the `Accordion` for a centered message
+plus the same quick-add input, so the empty state doubles as the entry point.
 
 **Learn:** controlled inputs (`value` + `onChange`), passing callbacks down as props
 (the same "lift state up, pass handlers down" pattern already used for `onToggleSubtask`),
@@ -165,13 +203,98 @@ it's still correct defensive logic to keep.
   trailing `()`. Without it, the expression's value is the function itself, not its return
   value.
 
+## Guide: implementing Phase 4 CRUD
+
+**Order, and why:** delete subtask → add subtask → add task → delete task. Each step
+reuses the previous one's pattern and adds exactly one new concept, instead of learning
+everything at once.
+
+### 1. Delete subtask
+**Goal:** remove one subtask; re-derive the parent's `completed` afterward, don't leave it stale.
+1. Add `function deleteSubtask(taskId: string, subtaskId: string)` in `App.tsx`, same outer
+   shape as `toggleSubtask`: `prev.map(t => t.id !== taskId ? t : { ... })`.
+2. `const newSubtasks = t.subtasks.filter(s => s.id !== subtaskId)`.
+3. Recompute `completed` with the same guarded expression already used in `toggleSubtask`:
+   `newSubtasks.length > 0 && newSubtasks.every(s => s.completed)`.
+4. Add a ghost trash-icon `Button` (lucide's `Trash2`) at the end of each subtask row,
+   calling `onDeleteSubtask(task.id, sub.id)` — thread it through `TaskCard`'s props.
+
+You're now writing the same `completed` derivation in two places (`toggleSubtask` and
+`deleteSubtask`) — a legitimate case to extract a helper, e.g.
+`const computeCompleted = (subs: Subtask[]) => subs.length > 0 && subs.every(s => s.completed)`,
+called from both. This is the textbook case for when extraction is worth it: real
+duplication, not a speculative one.
+
+**Edge case:** deleting a task's *last* subtask brings `subtasks.length` to `0`, and since
+`TaskCard` branches purely on that length, the card switches from accordion to
+plain-checkbox layout mid-interaction. Decide if that's acceptable (recommended: yes).
+
+**Test:** delete a subtask, confirm the list updates and `completed` recalculates; delete
+the last subtask and confirm the card flips to the plain-checkbox row.
+
+### 2. Add subtask
+**Goal:** append a new, unchecked subtask to a task.
+1. Id strategy: `crypto.randomUUID()` — built into the browser and Node, no new dependency.
+2. `function addSubtask(taskId: string, title: string)` — guard empty input first:
+   `if (!title.trim()) return`.
+3. `prev.map(t => t.id !== taskId ? t : { ...t, subtasks: [...t.subtasks, { id: crypto.randomUUID(), title: title.trim(), completed: false }], completed: false })`.
+   `completed: false` here isn't even strictly necessary — a freshly-added subtask is
+   always incomplete, so `.every(...)` across the new array is already `false` on its own;
+   unlike `toggleSubtask`, no special-case guard is needed here.
+4. A small inline input at the end of `AccordionContent`'s subtask list: local `useState`
+   for the text, `Enter` submits then clears and refocuses the input, `Escape`
+   clears/blurs without submitting (per the quick-add principle in the UX guide above).
+
+**Decision to park, not solve now:** should a zero-subtask task (the plain-checkbox row)
+also get an "add subtask" control, promoting it into an accordion task? Recommended scope
+cut: **no** — leave zero-subtask tasks as pure checkboxes for this pass; treat "promote a
+checkbox task into a subtask-having one" as a Phase 6 polish item.
+
+**Test:** type a title, press Enter — subtask appears unchecked, input clears and stays
+focused; an empty/whitespace submit does nothing.
+
+### 3. Add task
+**Goal:** the pinned "quick add" row from the UX guide, appending a new top-level task.
+1. `function addTask(title: string)` — same empty-guard as `addSubtask`.
+2. `id: crypto.randomUUID()`; switch `createdAt` to `new Date().toISOString()` instead of
+   hand-typed strings like the seed data has — this is where the long-unused `formatDate`
+   function from Phase 1 finally becomes relevant, since it expects a parseable date string.
+3. New tasks get `subtasks: []` and `completed: false` — per the scope cut above, every new
+   task starts as a plain-checkbox row.
+4. A small inline "add task" input (mirrors add-subtask, one level up), placed above the
+   `<Accordion>` in `App.tsx`.
+5. Append vs. prepend to the array: append matches `createdAt` chronological order; prepend
+   puts the newest task in view without scrolling. Either is defensible — pick one and move on.
+
+**Test:** add a few tasks, confirm each renders as a plain-checkbox row, confirm ordering
+matches whichever you picked.
+
+### 4. Delete task
+**Goal:** remove a task, with a safety net proportional to its cost (per the UX guide above).
+
+**Toast + undo (recommended):**
+1. `npx shadcn add sonner`, mount `<Toaster />` once near the root (`main.tsx` or top of `App`).
+2. `function deleteTask(taskId: string)`: capture the task first
+   (`const removed = tasks.find(t => t.id === taskId)`), then
+   `setTasks(prev => prev.filter(t => t.id !== taskId))`, then
+   `toast("Task deleted", { action: { label: "Undo", onClick: () => setTasks(prev => [...prev, removed]) } })`.
+   Known simplification: undo re-appends at the end, not necessarily the original position
+   — fine for v1.
+
+**`AlertDialog` confirm (alternative):**
+1. `npx shadcn add alert-dialog`.
+2. Wrap the delete trigger in `AlertDialog`/`AlertDialogTrigger`/`AlertDialogContent` with
+   Cancel/Continue; Continue's `onClick` calls `deleteTask`.
+
+Either way: put the trigger behind a small `⋮` `DropdownMenu` on the card (already
+installed), not a bare icon on the card face.
+
+**Test:** delete a task — with toast+undo, confirm Undo restores it; with the dialog,
+confirm Cancel leaves it untouched and Continue removes it.
+
 ## Resume here tomorrow
 
-1. Start Phase 4 with **delete subtask** (see "Suggested first step" above) as a warm-up,
-   then **add subtask**, then **add task**, then **delete task**.
-   - For "add task," decide up front whether a brand-new task starts with `subtasks: []`
-     (renders as the plain-checkbox row) or requires at least one subtask before it can be
-     created (always renders as an accordion item) — either is fine, just pick one so the
-     `TaskCard` branch behaves predictably for freshly-created tasks.
+1. Work through the CRUD guide above in order: delete subtask → add subtask → add task →
+   delete task.
 2. Phase 5 (persistence) is the natural stopping point after Phase 4 — right now every
    reload wipes progress back to the three seed tasks.

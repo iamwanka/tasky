@@ -1,12 +1,17 @@
 import { useState } from 'react'
 import './App.css'
+import { toast } from 'sonner'
 import type {
-  Task
+  Task,
+  Subtask
 } from '@/types/task'
 import {
   Accordion,
   AccordionItem
 } from '@components/ui/accordion'
+import { Input } from '@components/ui/input'
+import { Button } from '@components/ui/button'
+import { Plus } from 'lucide-react'
 import TaskCard from './components/applied/TaskCard'
 
 function App() {
@@ -39,7 +44,7 @@ function App() {
     }
   ])
 
-
+  const [newTaskTitle, setNewTaskTitle] = useState('')
 
   function toggleSubtask(taskId: string, subtaskId: string) {
     setTasks(prev =>
@@ -49,7 +54,7 @@ function App() {
         const newSubtasks = t.subtasks.map(s =>
           s.id === subtaskId ? { ...s, completed: !s.completed } : s
         );
-        
+
         return {
           ...t,
           subtasks: newSubtasks,
@@ -73,9 +78,96 @@ function App() {
 
   }
 
+  function deleteTask(taskId: string) {
+    const removedTask = tasks.find(t => t.id === taskId)
+    if (!removedTask) return
+
+    setTasks(prev =>
+      prev.filter(t => t.id !== taskId)
+    )
+
+    toast('Task deleted', {
+      description: removedTask.title,
+      action: {
+        label: 'Undo',
+        onClick: () => setTasks(prev => [...prev, removedTask]),
+      },
+    })
+  }
+
+  function deleteSubtask(taskId: string, subtaskId: string) {
+    setTasks(prev =>
+      prev.map(task =>
+        task.id === taskId ?
+          {
+            ...task,
+            subtasks: task.subtasks.filter(subtask => subtask.id !== subtaskId)
+          }
+          :
+          task
+      )
+    )
+  }
+
+
+  function addTask(title: string) {
+    const trimmed = title.trim()
+    if (!trimmed) return
+
+    setTasks(prev => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        title: trimmed,
+        completed: false,
+        createdAt: new Date().toISOString(),
+        subtasks: [],
+      },
+    ])
+  }
+
+  function handleAddTask(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    addTask(newTaskTitle)
+    setNewTaskTitle('')
+  }
+
+  function addSubtask(taskId: string, subtaskTitle: string) {
+    const trimmed = subtaskTitle.trim()
+    if (!trimmed) return
+
+    const newSubtask: Subtask = {
+      title: trimmed,
+      id: crypto.randomUUID(),
+      completed: false
+    }
+    setTasks(prev =>
+      prev.map(task =>
+        task.id === taskId ?
+          {
+            ...task,
+            subtasks: [...task.subtasks, newSubtask]
+          }
+          :
+          task
+      )
+    )
+  }
+
   return (
     <div className="min-h-screen bg-background px-4 py-6 text-foreground sm:px-6 lg:px-8">
       <div className="mx-auto w-full max-w-2xl">
+        <form onSubmit={handleAddTask} className="mb-4 flex gap-2">
+          <Input
+            value={newTaskTitle}
+            onChange={(e) => setNewTaskTitle(e.target.value)}
+            placeholder="Add a task..."
+            aria-label="New task title"
+          />
+          <Button type="submit" size="icon" aria-label="Add task">
+            <Plus />
+          </Button>
+        </form>
         <Accordion type="single" collapsible className="flex flex-col gap-3">
           {tasks.map(task => (
             <AccordionItem key={task.id} value={task.id} className="border-none">
@@ -83,6 +175,9 @@ function App() {
                 task={task}
                 onToggleSubtask={toggleSubtask}
                 onToggleTask={toggleTask}
+                onDeleteTask={deleteTask}
+                onDeleteSubtask={deleteSubtask}
+                onAddSubtask={addSubtask}
               />
             </AccordionItem>
           ))}
