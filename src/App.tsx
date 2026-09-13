@@ -9,10 +9,9 @@ import {
   Accordion,
   AccordionItem
 } from '@components/ui/accordion'
-import { Input } from '@components/ui/input'
-import { Button } from '@components/ui/button'
-import { Plus } from 'lucide-react'
 import TaskCard from './components/applied/TaskCard'
+import AddTaskDialog from './components/applied/AddTaskDialog'
+import { computeCompleted, EXIT_ANIMATION_MS } from '@/lib/tasks'
 
 function App() {
   const [tasks, setTasks] = useState<Task[]>([
@@ -44,7 +43,7 @@ function App() {
     }
   ])
 
-  const [newTaskTitle, setNewTaskTitle] = useState('')
+  const [removingTaskId, setRemovingTaskId] = useState<string | null>(null)
 
   function toggleSubtask(taskId: string, subtaskId: string) {
     setTasks(prev =>
@@ -58,7 +57,7 @@ function App() {
         return {
           ...t,
           subtasks: newSubtasks,
-          completed: newSubtasks.length > 0 && newSubtasks.every(s => s.completed),
+          completed: computeCompleted(newSubtasks),
         }
 
 
@@ -78,58 +77,64 @@ function App() {
 
   }
 
+  // Deletion waits for the exit animation to finish before touching state,
+  // so the row visibly fades/zooms out instead of vanishing instantly.
   function deleteTask(taskId: string) {
     const removedTask = tasks.find(t => t.id === taskId)
     if (!removedTask) return
 
-    setTasks(prev =>
-      prev.filter(t => t.id !== taskId)
-    )
+    setRemovingTaskId(taskId)
+    window.setTimeout(() => {
+      setTasks(prev => prev.filter(t => t.id !== taskId))
+      setRemovingTaskId(null)
 
-    toast('Task deleted', {
-      description: removedTask.title,
-      action: {
-        label: 'Undo',
-        onClick: () => setTasks(prev => [...prev, removedTask]),
-      },
-    })
+      toast('Task deleted', {
+        description: removedTask.title,
+        action: {
+          label: 'Undo',
+          onClick: () => setTasks(prev => [...prev, removedTask]),
+        },
+      })
+    }, EXIT_ANIMATION_MS)
   }
 
   function deleteSubtask(taskId: string, subtaskId: string) {
     setTasks(prev =>
-      prev.map(task =>
-        task.id === taskId ?
-          {
-            ...task,
-            subtasks: task.subtasks.filter(subtask => subtask.id !== subtaskId)
-          }
-          :
-          task
-      )
+      prev.map(task => {
+        if (task.id !== taskId) return task
+
+        const newSubtasks = task.subtasks.filter(subtask => subtask.id !== subtaskId)
+        return {
+          ...task,
+          subtasks: newSubtasks,
+          completed: computeCompleted(newSubtasks),
+        }
+      })
     )
   }
 
 
-  function addTask(title: string) {
-    const trimmed = title.trim()
-    if (!trimmed) return
+  // Builds the whole task (with its subtasks already inside) and appends it
+  // in one setTasks call — addTask's id lives only inside its own updater,
+  // so calling addTask then addSubtask in a loop would have no id to target.
+  function addTaskWithSubtasks(title: string, subtaskTitles: string[]) {
+    const trimmedTitle = title.trim()
+    if (!trimmedTitle) return
 
-    setTasks(prev => [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        title: trimmed,
-        completed: false,
-        createdAt: new Date().toISOString(),
-        subtasks: [],
-      },
-    ])
-  }
+    const subtasks: Subtask[] = subtaskTitles
+      .map(t => t.trim())
+      .filter(t => t.length > 0)
+      .map(t => ({ id: crypto.randomUUID(), title: t, completed: false }))
 
-  function handleAddTask(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    addTask(newTaskTitle)
-    setNewTaskTitle('')
+    const newTask: Task = {
+      id: crypto.randomUUID(),
+      title: trimmedTitle,
+      completed: computeCompleted(subtasks),
+      createdAt: new Date().toISOString(),
+      subtasks,
+    }
+
+    setTasks(prev => [...prev, newTask])
   }
 
   function addSubtask(taskId: string, subtaskTitle: string) {
@@ -154,34 +159,54 @@ function App() {
     )
   }
 
+  const doneTaskCount = tasks.filter(t => t.completed).length
+  const progressPercent = tasks.length > 0 ? (doneTaskCount / tasks.length) * 100 : 0
+
   return (
     <div className="min-h-screen bg-background px-4 py-6 text-foreground sm:px-6 lg:px-8">
       <div className="mx-auto w-full max-w-2xl">
-        <form onSubmit={handleAddTask} className="mb-4 flex gap-2">
-          <Input
-            value={newTaskTitle}
-            onChange={(e) => setNewTaskTitle(e.target.value)}
-            placeholder="Add a task..."
-            aria-label="New task title"
-          />
-          <Button type="submit" size="icon" aria-label="Add task">
-            <Plus />
-          </Button>
-        </form>
-        <Accordion type="single" collapsible className="flex flex-col gap-3">
-          {tasks.map(task => (
-            <AccordionItem key={task.id} value={task.id} className="border-none">
-              <TaskCard
-                task={task}
-                onToggleSubtask={toggleSubtask}
-                onToggleTask={toggleTask}
-                onDeleteTask={deleteTask}
-                onDeleteSubtask={deleteSubtask}
-                onAddSubtask={addSubtask}
-              />
-            </AccordionItem>
-          ))}
-        </Accordion>
+        <header className="mb-6">
+          <h1 className="text-2xl font-semibold tracking-tight">Cola de tareas</h1>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="font-mono text-sm font-medium tabular-nums">
+              {doneTaskCount} / {tasks.length}
+            </span>
+            <span className="text-sm text-muted-foreground">tareas completadas</span>
+          </div>
+          <div className="mt-2 h-1 overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full bg-primary transition-all"
+              style={{ width: `${progressPercent}%` }}
+            />
+          </div>
+        </header>
+
+        <AddTaskDialog onCreateTask={addTaskWithSubtasks} />
+
+        {tasks.length === 0 ? (
+          <div className="rounded-lg border border-dashed py-12 text-center">
+            <p className="font-medium">La cola está vacía</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Añade tu primera tarea arriba para empezar.
+            </p>
+          </div>
+        ) : (
+          <Accordion type="single" collapsible className="flex flex-col gap-3">
+            {tasks.map(task => (
+              <AccordionItem key={task.id} value={task.id} className="border-none">
+                <TaskCard
+                  task={task}
+                  onToggleSubtask={toggleSubtask}
+                  onToggleTask={toggleTask}
+                  onDeleteTask={deleteTask}
+                  onDeleteSubtask={deleteSubtask}
+                  onAddSubtask={addSubtask}
+                  isRemoving={removingTaskId === task.id}
+                />
+              </AccordionItem>
+            ))}
+          </Accordion>
+        )}
       </div>
     </div>
   )
